@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: crud-veiculos-ingress
+  namespace: crud-veiculos
+  labels:
+    app: crud-veiculos
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: alpaca-simple-newly.ngrok-free.app
+    http:
+      paths:
+      - path: /crud_veiculos(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: crud-veiculos-service
+            port:
+              number: 80
+  tls:
+  - hosts:
+    - alpaca-simple-newly.ngrok-free.app
+    secretName: crud-veiculos-tls

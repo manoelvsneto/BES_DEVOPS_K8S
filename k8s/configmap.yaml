@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: crud-veiculos-config
+  namespace: crud-veiculos
+  labels:
+    app: crud-veiculos
+data:
+  PORT: "3000"
+  NODE_ENV: "production"
+  DATABASE_PATH: "/app/data/veiculos.db"
+  BASE_PATH: "/crud_veiculos"

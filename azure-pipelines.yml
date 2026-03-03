@@ -1,0 +1,334 @@
+# Azure Pipeline - CI/CD Completo
+# Build, Test, SonarCloud, Docker Hub e Deploy Kubernetes
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    exclude:
+      - README.md
+      - docs/**
+      - '*.md'
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+
+variables:
+  - group: 'crud-veiculos-secrets'
+  # Variáveis públicas
+  - name: imageName
+    value: 'crud-veiculos-api'
+  - name: dockerRegistry
+    value: 'docker.io'
+  - name: kubernetesNamespace
+    value: 'crud-veiculos'
+  - name: nodeVersion
+    value: '20.x'
+  - name: sonarCloudOrganization
+    value: 'manoelvsneto'
+  - name: sonarCloudProjectKey
+    value: 'manoelvsneto_BES_DEVOPS_K8S'
+  - name: sonarCloudProjectName
+    value: 'BES_DEVOPS_K8S'
+
+stages:
+  # ========================================
+  # STAGE 1: Build e Teste
+  # ========================================
+  - stage: BuildAndTest
+    displayName: 'Build and Test'
+    jobs:
+      - job: Test
+        displayName: 'Run Tests and Code Analysis'
+        pool:
+          vmImage: 'ubuntu-latest'
+        
+        steps:
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: $(nodeVersion)
+          
+          - script: |
+              npm ci
+            displayName: 'Install Dependencies'
+          
+          - script: |
+              npm run build
+            displayName: 'Build TypeScript'
+          
+          - script: |
+              npm test -- --ci --coverage --maxWorkers=2
+            displayName: 'Run Unit Tests'
+          
+          - task: PublishTestResults@2
+            displayName: 'Publish Test Results'
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: 'JUnit'
+              testResultsFiles: '**/junit.xml'
+              failTaskOnFailedTests: true
+              testRunTitle: 'Unit Tests'
+          
+          - task: PublishCodeCoverageResults@1
+            displayName: 'Publish Code Coverage'
+            condition: succeededOrFailed()
+            inputs:
+              codeCoverageTool: 'Cobertura'
+              summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage/cobertura-coverage.xml'
+              reportDirectory: '$(System.DefaultWorkingDirectory)/coverage'
+          
+          - task: SonarCloudPrepare@1
+            displayName: 'Prepare SonarCloud Analysis'
+            inputs:
+              SonarCloud: 'SonarCloud-Connection'
+              organization: $(sonarCloudOrganization)
+              scannerMode: 'CLI'
+              configMode: 'manual'
+              cliProjectKey: $(sonarCloudProjectKey)
+              cliProjectName: $(sonarCloudProjectName)
+              cliSources: 'src'
+              extraProperties: |
+                sonar.javascript.lcov.reportPaths=coverage/lcov.info
+                sonar.typescript.lcov.reportPaths=coverage/lcov.info
+                sonar.coverage.exclusions=**/*.test.ts,**/*.spec.ts,**/tests/**
+                sonar.test.inclusions=**/*.test.ts,**/*.spec.ts
+                sonar.sources=src
+                sonar.tests=tests
+                sonar.language=ts
+                sonar.sourceEncoding=UTF-8
+          
+          - task: SonarCloudAnalyze@1
+            displayName: 'Run SonarCloud Analysis'
+          
+          - task: SonarCloudPublish@1
+            displayName: 'Publish SonarCloud Results'
+            inputs:
+              pollingTimeoutSec: '300'
+          
+          - script: |
+              echo "##vso[task.setvariable variable=buildSuccess;isOutput=true]true"
+            name: testResult
+            displayName: 'Set Build Success Variable'
+
+  # ========================================
+  # STAGE 2: Build e Push Docker Image
+  # ========================================
+  - stage: BuildDocker
+    displayName: 'Build and Push Docker Image'
+    dependsOn: BuildAndTest
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - job: BuildPushDocker
+        displayName: 'Build and Push to Docker Hub'
+        pool:
+          vmImage: 'ubuntu-latest'
+        
+        steps:
+          - task: Docker@2
+            displayName: 'Login to Docker Hub'
+            inputs:
+              command: login
+              containerRegistry: 'DockerHub-Connection'
+          
+          - task: Docker@2
+            displayName: 'Build Docker Image'
+            inputs:
+              command: build
+              repository: '$(DOCKER_USERNAME)/$(imageName)'
+              dockerfile: '$(Build.SourcesDirectory)/Dockerfile'
+              tags: |
+                $(Build.BuildId)
+                latest
+              arguments: '--no-cache'
+          
+          - task: Docker@2
+            displayName: 'Push Docker Image - Build ID'
+            inputs:
+              command: push
+              repository: '$(DOCKER_USERNAME)/$(imageName)'
+              tags: '$(Build.BuildId)'
+          
+          - task: Docker@2
+            displayName: 'Push Docker Image - Latest'
+            inputs:
+              command: push
+              repository: '$(DOCKER_USERNAME)/$(imageName)'
+              tags: 'latest'
+          
+          - script: |
+              echo "Docker image pushed: $(DOCKER_USERNAME)/$(imageName):$(Build.BuildId)"
+              echo "Docker image pushed: $(DOCKER_USERNAME)/$(imageName):latest"
+            displayName: 'Display Image Tags'
+
+  # ========================================
+  # STAGE 3: Deploy to Kubernetes
+  # ========================================
+  - stage: DeployKubernetes
+    displayName: 'Deploy to Kubernetes'
+    dependsOn: BuildDocker
+    condition: succeeded()
+    jobs:
+      - deployment: DeployToK8s
+        displayName: 'Deploy to Kubernetes Cluster'
+        pool:
+          vmImage: 'ubuntu-latest'
+        environment: 'production'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                
+                - task: KubernetesManifest@0
+                  displayName: 'Create/Update Namespace'
+                  inputs:
+                    action: 'deploy'
+                    kubernetesServiceConnection: 'Kubernetes-Connection'
+                    namespace: $(kubernetesNamespace)
+                    manifests: |
+                      $(Build.SourcesDirectory)/k8s/namespace.yaml
+                
+                - task: KubernetesManifest@0
+                  displayName: 'Deploy ConfigMap'
+                  inputs:
+                    action: 'deploy'
+                    kubernetesServiceConnection: 'Kubernetes-Connection'
+                    namespace: $(kubernetesNamespace)
+                    manifests: |
+                      $(Build.SourcesDirectory)/k8s/configmap.yaml
+                
+                - task: KubernetesManifest@0
+                  displayName: 'Deploy PVC'
+                  inputs:
+                    action: 'deploy'
+                    kubernetesServiceConnection: 'Kubernetes-Connection'
+                    namespace: $(kubernetesNamespace)
+                    manifests: |
+                      $(Build.SourcesDirectory)/k8s/pvc.yaml
+                
+                - task: KubernetesManifest@0
+                  displayName: 'Deploy Application'
+                  inputs:
+                    action: 'deploy'
+                    kubernetesServiceConnection: 'Kubernetes-Connection'
+                    namespace: $(kubernetesNamespace)
+                    manifests: |
+                      $(Build.SourcesDirectory)/k8s/deployment.yaml
+                      $(Build.SourcesDirectory)/k8s/service.yaml
+                    containers: |
+                      $(DOCKER_USERNAME)/$(imageName):$(Build.BuildId)
+                
+                - task: KubernetesManifest@0
+                  displayName: 'Deploy Ingress'
+                  inputs:
+                    action: 'deploy'
+                    kubernetesServiceConnection: 'Kubernetes-Connection'
+                    namespace: $(kubernetesNamespace)
+                    manifests: |
+                      $(Build.SourcesDirectory)/k8s/ingress.yaml
+                
+                - task: KubernetesManifest@0
+                  displayName: 'Deploy HPA'
+                  inputs:
+                    action: 'deploy'
+                    kubernetesServiceConnection: 'Kubernetes-Connection'
+                    namespace: $(kubernetesNamespace)
+                    manifests: |
+                      $(Build.SourcesDirectory)/k8s/hpa.yaml
+                
+                - task: Kubernetes@1
+                  displayName: 'Check Deployment Status'
+                  inputs:
+                    connectionType: 'Kubernetes Service Connection'
+                    kubernetesServiceEndpoint: 'Kubernetes-Connection'
+                    namespace: $(kubernetesNamespace)
+                    command: 'get'
+                    arguments: 'pods'
+                
+                - task: Kubernetes@1
+                  displayName: 'Wait for Deployment'
+                  inputs:
+                    connectionType: 'Kubernetes Service Connection'
+                    kubernetesServiceEndpoint: 'Kubernetes-Connection'
+                    namespace: $(kubernetesNamespace)
+                    command: 'rollout'
+                    arguments: 'status deployment/crud-veiculos --timeout=5m'
+                
+                - script: |
+                    echo "Deployment completed successfully!"
+                    echo "Application URL: https://alpaca-simple-newly.ngrok-free.app/crud_veiculos"
+                    echo "API Docs: https://alpaca-simple-newly.ngrok-free.app/crud_veiculos/api-docs"
+                  displayName: 'Deployment Summary'
+
+  # ========================================
+  # STAGE 4: Smoke Tests
+  # ========================================
+  - stage: SmokeTests
+    displayName: 'Smoke Tests'
+    dependsOn: DeployKubernetes
+    condition: succeeded()
+    jobs:
+      - job: RunSmokeTests
+        displayName: 'Run Smoke Tests'
+        pool:
+          vmImage: 'ubuntu-latest'
+        
+        steps:
+          - script: |
+              echo "Waiting for application to be ready..."
+              sleep 30
+            displayName: 'Wait for Application Startup'
+          
+          - script: |
+              # Health Check
+              echo "Testing health endpoint..."
+              response=$(curl -s -o /dev/null -w "%{http_code}" https://alpaca-simple-newly.ngrok-free.app/crud_veiculos/health)
+              
+              if [ $response -eq 200 ]; then
+                echo "✓ Health check passed"
+              else
+                echo "✗ Health check failed with status $response"
+                exit 1
+              fi
+            displayName: 'Health Check'
+          
+          - script: |
+              # API Test - List Vehicles
+              echo "Testing API endpoint..."
+              response=$(curl -s -o /dev/null -w "%{http_code}" https://alpaca-simple-newly.ngrok-free.app/crud_veiculos/api/veiculos)
+              
+              if [ $response -eq 200 ]; then
+                echo "✓ API endpoint accessible"
+              else
+                echo "✗ API endpoint failed with status $response"
+                exit 1
+              fi
+            displayName: 'API Endpoint Test'
+          
+          - script: |
+              # Swagger UI Test
+              echo "Testing Swagger UI..."
+              response=$(curl -s -o /dev/null -w "%{http_code}" https://alpaca-simple-newly.ngrok-free.app/crud_veiculos/api-docs)
+              
+              if [ $response -eq 200 ]; then
+                echo "✓ Swagger UI accessible"
+              else
+                echo "✗ Swagger UI failed with status $response"
+                exit 1
+              fi
+            displayName: 'Swagger UI Test'
+          
+          - script: |
+              echo "================================================"
+              echo "🎉 All smoke tests passed!"
+              echo "================================================"
+              echo "Application is healthy and running"
+              echo "URL: https://alpaca-simple-newly.ngrok-free.app/crud_veiculos"
+              echo "================================================"
+            displayName: 'Smoke Tests Summary'

@@ -1,0 +1,331 @@
+# Azure Pipeline - CD (Deploy Docker e Kubernetes)
+# Pipeline focado em build de Docker image e deploy no Kubernetes
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    exclude:
+      - README.md
+      - docs/**
+      - '*.md'
+
+pr: none
+
+variables:
+  - group: 'crud-veiculos-secrets'
+  - name: imageName
+    value: 'crud-veiculos-api'
+  - name: dockerRegistry
+    value: 'docker.io'
+  - name: kubernetesNamespace
+    value: 'crud-veiculos'
+
+stages:
+  # ========================================
+  # STAGE 1: Build Docker Image
+  # ========================================
+  - stage: BuildDocker
+    displayName: 'Build Docker Image'
+    jobs:
+      - job: BuildImage
+        displayName: 'Build and Push Docker Image to Docker Hub'
+        pool:
+          vmImage: 'ubuntu-latest'
+        
+        steps:
+          - task: Docker@2
+            displayName: 'Login to Docker Hub'
+            inputs:
+              command: login
+              containerRegistry: 'DockerHub-Connection'
+          
+          - task: Docker@2
+            displayName: 'Build Docker Image'
+            inputs:
+              command: buildAndPush
+              repository: '$(DOCKER_USERNAME)/$(imageName)'
+              dockerfile: '$(Build.SourcesDirectory)/Dockerfile'
+              tags: |
+                $(Build.BuildId)
+                $(Build.SourceVersion)
+                latest
+              arguments: |
+                --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+                --build-arg VCS_REF=$(Build.SourceVersion)
+                --build-arg VERSION=$(Build.BuildNumber)
+          
+          - script: |
+              echo "================================================"
+              echo "Docker Image Build Summary"
+              echo "================================================"
+              echo "Repository: $(DOCKER_USERNAME)/$(imageName)"
+              echo "Tags:"
+              echo "  - $(Build.BuildId)"
+              echo "  - $(Build.SourceVersion)"
+              echo "  - latest"
+              echo "================================================"
+              echo "Pull commands:"
+              echo "  docker pull $(DOCKER_USERNAME)/$(imageName):latest"
+              echo "  docker pull $(DOCKER_USERNAME)/$(imageName):$(Build.BuildId)"
+              echo "================================================"
+            displayName: 'Display Image Information'
+          
+          - task: Docker@2
+            displayName: 'Scan Image for Vulnerabilities (Optional)'
+            continueOnError: true
+            inputs:
+              command: 'run'
+              arguments: '--rm aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL $(DOCKER_USERNAME)/$(imageName):$(Build.BuildId)'
+
+  # ========================================
+  # STAGE 2: Deploy to Kubernetes
+  # ========================================
+  - stage: DeployKubernetes
+    displayName: 'Deploy to Kubernetes'
+    dependsOn: BuildDocker
+    condition: succeeded()
+    jobs:
+      - deployment: DeployProduction
+        displayName: 'Deploy to Production Cluster'
+        pool:
+          vmImage: 'ubuntu-latest'
+        environment: 'production-k8s'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                
+                # ========================================
+                # Update Deployment Image
+                # ========================================
+                - task: qetza.replacetokens.replacetokens-task.replacetokens@3
+                  displayName: 'Replace tokens in deployment.yaml'
+                  inputs:
+                    targetFiles: 'k8s/deployment.yaml'
+                    encoding: 'auto'
+                    writeBOM: true
+                    actionOnMissing: 'warn'
+                    keepToken: false
+                    tokenPrefix: '#{'
+                    tokenSuffix: '}#'
+                
+                # ========================================
+                # Deploy Namespace
+                # ========================================
+                - task: Kubernetes@1
+                  displayName: 'kubectl apply namespace'
+                  inputs:
+                    connectionType: 'Kubernetes Service Connection'
+                    kubernetesServiceEndpoint: 'Kubernetes-Connection'
+                    command: 'apply'
+                    arguments: '-f k8s/namespace.yaml'
+                
+                # ========================================
+                # Deploy ConfigMap
+                # ========================================
+                - task: Kubernetes@1
+                  displayName: 'kubectl apply configmap'
+                  inputs:
+                    connectionType: 'Kubernetes Service Connection'
+                    kubernetesServiceEndpoint: 'Kubernetes-Connection'
+                    namespace: $(kubernetesNamespace)
+                    command: 'apply'
+                    arguments: '-f k8s/configmap.yaml'
+                
+                # ========================================
+                # Deploy PVC
+                # ========================================
+                - task: Kubernetes@1
+                  displayName: 'kubectl apply pvc'
+                  inputs:
+                    connectionType: 'Kubernetes Service Connection'
+                    kubernetesServiceEndpoint: 'Kubernetes-Connection'
+                    namespace: $(kubernetesNamespace)
+                    command: 'apply'
+                    arguments: '-f k8s/pvc.yaml'
+                
+                # ========================================
+                # Update Deployment with New Image
+                # ========================================
+                - task: Kubernetes@1
+                  displayName: 'kubectl set image'
+                  inputs:
+                    connectionType: 'Kubernetes Service Connection'
+                    kubernetesServiceEndpoint: 'Kubernetes-Connection'
+                    namespace: $(kubernetesNamespace)
+                    command: 'set'
+                    arguments: 'image deployment/crud-veiculos crud-veiculos=$(DOCKER_USERNAME)/$(imageName):$(Build.BuildId)'
+                
+                # ========================================
+                # Deploy Service
+                # ========================================
+                - task: Kubernetes@1
+                  displayName: 'kubectl apply service'
+                  inputs:
+                    connectionType: 'Kubernetes Service Connection'
+                    kubernetesServiceEndpoint: 'Kubernetes-Connection'
+                    namespace: $(kubernetesNamespace)
+                    command: 'apply'
+                    arguments: '-f k8s/service.yaml'
+                
+                # ========================================
+                # Deploy Deployment
+                # ========================================
+                - task: Kubernetes@1
+                  displayName: 'kubectl apply deployment'
+                  inputs:
+                    connectionType: 'Kubernetes Service Connection'
+                    kubernetesServiceEndpoint: 'Kubernetes-Connection'
+                    namespace: $(kubernetesNamespace)
+                    command: 'apply'
+                    arguments: '-f k8s/deployment.yaml'
+                
+                # ========================================
+                # Deploy Ingress
+                # ========================================
+                - task: Kubernetes@1
+                  displayName: 'kubectl apply ingress'
+                  inputs:
+                    connectionType: 'Kubernetes Service Connection'
+                    kubernetesServiceEndpoint: 'Kubernetes-Connection'
+                    namespace: $(kubernetesNamespace)
+                    command: 'apply'
+                    arguments: '-f k8s/ingress.yaml'
+                
+                # ========================================
+                # Deploy HPA
+                # ========================================
+                - task: Kubernetes@1
+                  displayName: 'kubectl apply hpa'
+                  inputs:
+                    connectionType: 'Kubernetes Service Connection'
+                    kubernetesServiceEndpoint: 'Kubernetes-Connection'
+                    namespace: $(kubernetesNamespace)
+                    command: 'apply'
+                    arguments: '-f k8s/hpa.yaml'
+                
+                # ========================================
+                # Wait for Rollout
+                # ========================================
+                - task: Kubernetes@1
+                  displayName: 'kubectl rollout status'
+                  inputs:
+                    connectionType: 'Kubernetes Service Connection'
+                    kubernetesServiceEndpoint: 'Kubernetes-Connection'
+                    namespace: $(kubernetesNamespace)
+                    command: 'rollout'
+                    arguments: 'status deployment/crud-veiculos --timeout=5m'
+                
+                # ========================================
+                # Get Deployment Status
+                # ========================================
+                - task: Kubernetes@1
+                  displayName: 'kubectl get pods'
+                  inputs:
+                    connectionType: 'Kubernetes Service Connection'
+                    kubernetesServiceEndpoint: 'Kubernetes-Connection'
+                    namespace: $(kubernetesNamespace)
+                    command: 'get'
+                    arguments: 'pods -l app=crud-veiculos'
+                
+                - task: Kubernetes@1
+                  displayName: 'kubectl get services'
+                  inputs:
+                    connectionType: 'Kubernetes Service Connection'
+                    kubernetesServiceEndpoint: 'Kubernetes-Connection'
+                    namespace: $(kubernetesNamespace)
+                    command: 'get'
+                    arguments: 'services'
+                
+                # ========================================
+                # Deployment Summary
+                # ========================================
+                - script: |
+                    echo "================================================"
+                    echo "Kubernetes Deployment Summary"
+                    echo "================================================"
+                    echo "Namespace: $(kubernetesNamespace)"
+                    echo "Deployment: crud-veiculos"
+                    echo "Image: $(DOCKER_USERNAME)/$(imageName):$(Build.BuildId)"
+                    echo "Build ID: $(Build.BuildId)"
+                    echo "================================================"
+                    echo "Application URLs:"
+                    echo "  API: https://alpaca-simple-newly.ngrok-free.app/crud_veiculos"
+                    echo "  Swagger: https://alpaca-simple-newly.ngrok-free.app/crud_veiculos/api-docs"
+                    echo "  Health: https://alpaca-simple-newly.ngrok-free.app/crud_veiculos/health"
+                    echo "================================================"
+                  displayName: 'Deployment Summary'
+
+  # ========================================
+  # STAGE 3: Post-Deployment Validation
+  # ========================================
+  - stage: PostDeployment
+    displayName: 'Post-Deployment Validation'
+    dependsOn: DeployKubernetes
+    condition: succeeded()
+    jobs:
+      - job: HealthCheck
+        displayName: 'Health Check and Smoke Tests'
+        pool:
+          vmImage: 'ubuntu-latest'
+        
+        steps:
+          - script: |
+              echo "Waiting for application to stabilize..."
+              sleep 30
+            displayName: 'Wait for Stabilization'
+          
+          - script: |
+              echo "Running health checks..."
+              
+              max_attempts=10
+              attempt=1
+              
+              while [ $attempt -le $max_attempts ]; do
+                echo "Health check attempt $attempt of $max_attempts..."
+                
+                response=$(curl -s -o /dev/null -w "%{http_code}" https://alpaca-simple-newly.ngrok-free.app/crud_veiculos/health)
+                
+                if [ $response -eq 200 ]; then
+                  echo "✓ Health check passed!"
+                  exit 0
+                fi
+                
+                echo "Health check returned status $response, retrying in 10s..."
+                sleep 10
+                attempt=$((attempt + 1))
+              done
+              
+              echo "✗ Health check failed after $max_attempts attempts"
+              exit 1
+            displayName: 'Health Check with Retry'
+          
+          - script: |
+              echo "Testing API endpoints..."
+              
+              # Test list endpoint
+              curl -f https://alpaca-simple-newly.ngrok-free.app/crud_veiculos/api/veiculos || exit 1
+              echo "✓ List endpoint working"
+              
+              # Test Swagger UI
+              curl -f https://alpaca-simple-newly.ngrok-free.app/crud_veiculos/api-docs || exit 1
+              echo "✓ Swagger UI accessible"
+              
+              echo "✓ All smoke tests passed!"
+            displayName: 'Smoke Tests'
+          
+          - script: |
+              echo "================================================"
+              echo "🎉 Deployment Successful!"
+              echo "================================================"
+              echo "The application is healthy and running"
+              echo ""
+              echo "Access the application:"
+              echo "  🌐 API: https://alpaca-simple-newly.ngrok-free.app/crud_veiculos"
+              echo "  📚 Docs: https://alpaca-simple-newly.ngrok-free.app/crud_veiculos/api-docs"
+              echo "  ❤️  Health: https://alpaca-simple-newly.ngrok-free.app/crud_veiculos/health"
+              echo "================================================"
+            displayName: 'Success Message'
