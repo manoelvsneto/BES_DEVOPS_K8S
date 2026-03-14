@@ -171,20 +171,6 @@ stages:
                 - checkout: self
                 
                 - task: KubernetesManifest@0
-                  displayName: 'Create imagePullSecret'
-                  inputs:
-                    kubernetesServiceConnection: 'BAREMETAL'
-                    action: createSecret
-                    secretName: $(imagePullSecret)
-                    dockerRegistryEndpoint: 'DockerConnection'
-                
-                - task: PublishPipelineArtifact@1
-                  displayName: 'Publish Report'
-                  inputs:
-                    artifact: '_crud-veiculos'
-                    publishLocation: 'pipeline'
-                
-                - task: KubernetesManifest@0
                   displayName: 'Deploy to Kubernetes cluster'
                   inputs:
                     kubernetesServiceConnection: 'BAREMETAL'
