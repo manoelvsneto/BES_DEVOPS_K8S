@@ -178,6 +178,7 @@ stages:
                   inputs:
                     kubernetesServiceConnection: 'BAREMETAL'
                     action: deploy
+                    verbose: true
                     manifests: |
                       $(Build.SourcesDirectory)/k8s/configmap.yaml
                       $(Build.SourcesDirectory)/k8s/pvc.yaml
