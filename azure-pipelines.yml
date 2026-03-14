@@ -1,5 +1,8 @@
 # Azure Pipeline - CI/CD Completo
 # Build, Test, SonarCloud, Docker Hub e Deploy Kubernetes
+pool:
+  name: BareMetal
+  vmImage: 'ubuntu-22.04'
 
 trigger:
   branches:
