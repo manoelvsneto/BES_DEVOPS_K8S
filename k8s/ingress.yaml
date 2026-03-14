@@ -15,7 +15,7 @@ spec:
   - host: alpaca-simple-newly.ngrok-free.app
     http:
       paths:
-      - path: /crud_veiculos(/|$)(.*)
+      - path: /apiveiculos(/|$)(.*)
         pathType: Prefix
         backend:
           service:
