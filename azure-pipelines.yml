@@ -129,29 +129,24 @@ stages:
     dependsOn: BuildAndTest
     condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
     jobs:
-      - deployment: BuildPushDocker
+      - job: BuildPushDocker
         displayName: 'Build and Push to Docker Hub'
         pool:
           vmImage: 'ubuntu-latest'
-        environment: 'docker-build'
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - checkout: self
-                
-                - task: Docker@2
-                  displayName: 'Build and Push Docker Image'
-                  inputs:
-                    containerRegistry: 'DockerConnection'
-                    repository: '$(dockerUsername)/$(imageName)'
-                    command: 'buildAndPush'
-                    tags: '$(Build.BuildId)'
-                    Dockerfile: '$(Build.SourcesDirectory)/Dockerfile'
-                
-                - script: |
-                    echo "Docker image pushed: $(dockerUsername)/$(imageName):$(Build.BuildId)"
-                  displayName: 'Display Image Tags'
+        
+        steps:
+          - task: Docker@2
+            displayName: 'Build and Push Docker Image'
+            inputs:
+              containerRegistry: 'DockerConnection'
+              repository: '$(dockerUsername)/$(imageName)'
+              command: 'buildAndPush'
+              tags: '$(Build.BuildId)'
+              Dockerfile: '$(Build.SourcesDirectory)/Dockerfile'
+          
+          - script: |
+              echo "Docker image pushed: $(dockerUsername)/$(imageName):$(Build.BuildId)"
+            displayName: 'Display Image Tags'
 
   # ========================================
   # STAGE 3: Deploy to Kubernetes
@@ -165,7 +160,7 @@ stages:
         displayName: 'Deploy to Kubernetes Cluster'
         pool:
           vmImage: 'ubuntu-latest'
-        environment: 'kubernetes-deploy'
+        environment: 'production'
         strategy:
           runOnce:
             deploy:
@@ -218,64 +213,61 @@ stages:
     dependsOn: DeployKubernetes
     condition: succeeded()
     jobs:
-      - deployment: RunSmokeTests
+      - job: RunSmokeTests
         displayName: 'Run Smoke Tests'
         pool:
           vmImage: 'ubuntu-latest'
-        environment: 'smoke-tests'
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - script: |
-                    echo "Waiting for application to be ready..."
-                    sleep 30
-                  displayName: 'Wait for Application Startup'
-                
-                - script: |
-                    # Health Check
-                    echo "Testing health endpoint..."
-                    response=$(curl -s -o /dev/null -w "%{http_code}" https://alpaca-simple-newly.ngrok-free.app/apiveiculos/health)
-                    
-                    if [ $response -eq 200 ]; then
-                      echo "✓ Health check passed"
-                    else
-                      echo "✗ Health check failed with status $response"
-                      exit 1
-                    fi
-                  displayName: 'Health Check'
-                
-                - script: |
-                    # API Test - List Vehicles
-                    echo "Testing API endpoint..."
-                    response=$(curl -s -o /dev/null -w "%{http_code}" https://alpaca-simple-newly.ngrok-free.app/apiveiculos/api/veiculos)
-                    
-                    if [ $response -eq 200 ]; then
-                      echo "✓ API endpoint accessible"
-                    else
-                      echo "✗ API endpoint failed with status $response"
-                      exit 1
-                    fi
-                  displayName: 'API Endpoint Test'
-                
-                - script: |
-                    # Swagger UI Test
-                    echo "Testing Swagger UI..."
-                    response=$(curl -s -o /dev/null -w "%{http_code}" https://alpaca-simple-newly.ngrok-free.app/apiveiculos/api-docs)
-                    
-                    if [ $response -eq 200 ]; then
-                      echo "✓ Swagger UI accessible"
-                    else
-                      echo "✗ Swagger UI failed with status $response"
-                      exit 1
-                    fi
-                  displayName: 'Swagger UI Test'
-                
-                - script: |
-                    echo "================================================"
-                    echo "🎉 All smoke tests passed!"
-                    echo "================================================"
-                    echo "Application is healthy and running"
-                    echo "URL: https://alpaca-simple-newly.ngrok-free.app/apiveiculos"
-                    echo "================================================"
-                  displayName: 'Smoke Tests Summary'
+        
+        steps:
+          - script: |
+              echo "Waiting for application to be ready..."
+              sleep 30
+            displayName: 'Wait for Application Startup'
+          
+          - script: |
+              # Health Check
+              echo "Testing health endpoint..."
+              response=$(curl -s -o /dev/null -w "%{http_code}" https://alpaca-simple-newly.ngrok-free.app/apiveiculos/health)
+              
+              if [ $response -eq 200 ]; then
+                echo "✓ Health check passed"
+              else
+                echo "✗ Health check failed with status $response"
+                exit 1
+              fi
+            displayName: 'Health Check'
+          
+          - script: |
+              # API Test - List Vehicles
+              echo "Testing API endpoint..."
+              response=$(curl -s -o /dev/null -w "%{http_code}" https://alpaca-simple-newly.ngrok-free.app/apiveiculos/api/veiculos)
+              
+              if [ $response -eq 200 ]; then
+                echo "✓ API endpoint accessible"
+              else
+                echo "✗ API endpoint failed with status $response"
+                exit 1
+              fi
+            displayName: 'API Endpoint Test'
+          
+          - script: |
+              # Swagger UI Test
+              echo "Testing Swagger UI..."
+              response=$(curl -s -o /dev/null -w "%{http_code}" https://alpaca-simple-newly.ngrok-free.app/apiveiculos/api-docs)
+              
+              if [ $response -eq 200 ]; then
+                echo "✓ Swagger UI accessible"
+              else
+                echo "✗ Swagger UI failed with status $response"
+                exit 1
+              fi
+            displayName: 'Swagger UI Test'
+          
+          - script: |
+              echo "================================================"
+              echo "🎉 All smoke tests passed!"
+              echo "================================================"
+              echo "Application is healthy and running"
+              echo "URL: https://alpaca-simple-newly.ngrok-free.app/apiveiculos"
+              echo "================================================"
+            displayName: 'Smoke Tests Summary'
