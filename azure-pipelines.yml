@@ -28,6 +28,8 @@ variables:
     value: 'manoelvsneto'
   - name: kubernetesNamespace
     value: 'crud-veiculos'
+  - name: imagePullSecret
+    value: 'dockerconfigjson'
   - name: nodeVersion
     value: '20.x'
   - name: sonarCloudOrganization
@@ -166,79 +168,36 @@ stages:
                 - checkout: self
                 
                 - task: KubernetesManifest@0
-                  displayName: 'Create/Update Namespace'
+                  displayName: 'Create imagePullSecret'
                   inputs:
-                    action: 'deploy'
-                    kubernetesServiceConnection: 'Kubernetes-Connection'
-                    namespace: $(kubernetesNamespace)
+                    kubernetesServiceConnection: 'BAREMETAL'
+                    action: createSecret
+                    secretName: $(imagePullSecret)
+                    dockerRegistryEndpoint: 'DockerConnection'
+                
+                - task: PublishPipelineArtifact@1
+                  displayName: 'Publish Report'
+                  inputs:
+                    artifact: '_crud-veiculos'
+                    publishLocation: 'pipeline'
+                
+                - task: KubernetesManifest@0
+                  displayName: 'Deploy to Kubernetes cluster'
+                  inputs:
+                    kubernetesServiceConnection: 'BAREMETAL'
+                    action: deploy
                     manifests: |
                       $(Build.SourcesDirectory)/k8s/namespace.yaml
-                
-                - task: KubernetesManifest@0
-                  displayName: 'Deploy ConfigMap'
-                  inputs:
-                    action: 'deploy'
-                    kubernetesServiceConnection: 'Kubernetes-Connection'
-                    namespace: $(kubernetesNamespace)
-                    manifests: |
                       $(Build.SourcesDirectory)/k8s/configmap.yaml
-                
-                - task: KubernetesManifest@0
-                  displayName: 'Deploy PVC'
-                  inputs:
-                    action: 'deploy'
-                    kubernetesServiceConnection: 'Kubernetes-Connection'
-                    namespace: $(kubernetesNamespace)
-                    manifests: |
                       $(Build.SourcesDirectory)/k8s/pvc.yaml
-                
-                - task: KubernetesManifest@0
-                  displayName: 'Deploy Application'
-                  inputs:
-                    action: 'deploy'
-                    kubernetesServiceConnection: 'Kubernetes-Connection'
-                    namespace: $(kubernetesNamespace)
-                    manifests: |
                       $(Build.SourcesDirectory)/k8s/deployment.yaml
                       $(Build.SourcesDirectory)/k8s/service.yaml
-                    containers: |
-                      $(dockerUsername)/$(imageName):$(Build.BuildId)
-                
-                - task: KubernetesManifest@0
-                  displayName: 'Deploy Ingress'
-                  inputs:
-                    action: 'deploy'
-                    kubernetesServiceConnection: 'Kubernetes-Connection'
-                    namespace: $(kubernetesNamespace)
-                    manifests: |
                       $(Build.SourcesDirectory)/k8s/ingress.yaml
-                
-                - task: KubernetesManifest@0
-                  displayName: 'Deploy HPA'
-                  inputs:
-                    action: 'deploy'
-                    kubernetesServiceConnection: 'Kubernetes-Connection'
-                    namespace: $(kubernetesNamespace)
-                    manifests: |
                       $(Build.SourcesDirectory)/k8s/hpa.yaml
+                    imagePullSecrets: |
+                      $(imagePullSecret)
+                    containers: '$(dockerUsername)/$(imageName):$(Build.BuildId)'
                 
-                - task: Kubernetes@1
-                  displayName: 'Check Deployment Status'
-                  inputs:
-                    connectionType: 'Kubernetes Service Connection'
-                    kubernetesServiceEndpoint: 'Kubernetes-Connection'
-                    namespace: $(kubernetesNamespace)
-                    command: 'get'
-                    arguments: 'pods'
-                
-                - task: Kubernetes@1
-                  displayName: 'Wait for Deployment'
-                  inputs:
-                    connectionType: 'Kubernetes Service Connection'
-                    kubernetesServiceEndpoint: 'Kubernetes-Connection'
-                    namespace: $(kubernetesNamespace)
-                    command: 'rollout'
-                    arguments: 'status deployment/crud-veiculos --timeout=5m'
                 
                 - script: |
                     echo "Deployment completed successfully!"
