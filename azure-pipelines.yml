@@ -170,6 +170,9 @@ stages:
               steps:
                 - checkout: self
                 
+                # imagePullSecret criado manualmente no cluster via kubectl
+                # Não criar via pipeline - gerenciado manualmente
+                
                 - task: KubernetesManifest@0
                   displayName: 'Deploy to Kubernetes cluster'
                   inputs:
