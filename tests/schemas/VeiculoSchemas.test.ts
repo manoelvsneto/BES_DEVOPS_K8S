@@ -1,5 +1,5 @@
-import { CriarVeiculoSchema } from '../../../src/features/veiculos/criar/CriarVeiculoSchema';
-import { AtualizarVeiculoSchema } from '../../../src/features/veiculos/atualizar/AtualizarVeiculoSchema';
+import { CriarVeiculoSchema } from '../../src/features/veiculos/criar/CriarVeiculoSchema';
+import { AtualizarVeiculoSchema } from '../../src/features/veiculos/atualizar/AtualizarVeiculoSchema';
 
 describe('Schemas de Validação', () => {
   describe('CriarVeiculoSchema', () => {
