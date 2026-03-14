@@ -24,11 +24,11 @@ pr:
 variables:
   # Variáveis públicas
   - name: imageName
-    value: 'crud-veiculos-api'
+    value: 'BES_DEVOPS_K8S'
   - name: dockerRegistry
     value: 'docker.io'
   - name: dockerUsername
-    value: 'manoelvsneto'
+    value: 'manoelvdsneto'
   - name: kubernetesNamespace
     value: 'crud-veiculos'
   - name: imagePullSecret
@@ -52,7 +52,7 @@ stages:
       - job: Test
         displayName: 'Run Tests and Code Analysis'
         pool:
-          vmImage: 'ubuntu-latest'
+          name: BareMetal
         
         steps:
           - task: NodeTool@0
@@ -135,7 +135,7 @@ stages:
       - job: BuildPushDocker
         displayName: 'Build and Push to Docker Hub'
         pool:
-          vmImage: 'ubuntu-latest'
+          name: BareMetal
         
         steps:
           - task: Docker@2
@@ -162,7 +162,7 @@ stages:
       - deployment: DeployToK8s
         displayName: 'Deploy to Kubernetes Cluster'
         pool:
-          vmImage: 'ubuntu-latest'
+          name: BareMetal
         environment: 'production'
         strategy:
           runOnce:
@@ -219,7 +219,7 @@ stages:
       - job: RunSmokeTests
         displayName: 'Run Smoke Tests'
         pool:
-          vmImage: 'ubuntu-latest'
+          name: BareMetal
         
         steps:
           - script: |
