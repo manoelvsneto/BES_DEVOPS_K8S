@@ -30,7 +30,7 @@ variables:
   - name: dockerUsername
     value: 'manoelvsneto'
   - name: kubernetesNamespace
-    value: 'crud-veiculos'
+    value: 'default'
   - name: imagePullSecret
     value: 'dockerconfigjson'
   - name: nodeVersion
