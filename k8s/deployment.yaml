@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: crud-veiculos
-  namespace: crud-veiculos
+  namespace: default
   labels:
     app: crud-veiculos
 spec:

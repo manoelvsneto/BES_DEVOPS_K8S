@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: crud-veiculos-service
-  namespace: crud-veiculos
+  namespace: default
   labels:
     app: crud-veiculos
 spec:

@@ -2,7 +2,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: crud-veiculos-ingress
-  namespace: crud-veiculos
+  namespace: default
   labels:
     app: crud-veiculos
   annotations:
