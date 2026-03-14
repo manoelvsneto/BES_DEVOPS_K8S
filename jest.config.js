@@ -26,14 +26,12 @@ module.exports = {
     }]
   ],
   moduleFileExtensions: ['ts', 'js', 'json'],
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
+  },
   verbose: true,
   clearMocks: true,
   resetMocks: true,
   restoreMocks: true,
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
-  globals: {
-    'ts-jest': {
-      isolatedModules: true,
-    },
-  },
 };
