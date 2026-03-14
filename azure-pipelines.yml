@@ -19,12 +19,13 @@ pr:
       - develop
 
 variables:
-  - group: 'crud-veiculos-secrets'
   # Variáveis públicas
   - name: imageName
     value: 'crud-veiculos-api'
   - name: dockerRegistry
     value: 'docker.io'
+  - name: dockerUsername
+    value: 'seu-usuario-docker'
   - name: kubernetesNamespace
     value: 'crud-veiculos'
   - name: nodeVersion
@@ -162,8 +163,8 @@ stages:
               tags: 'latest'
           
           - script: |
-              echo "Docker image pushed: $(DOCKER_USERNAME)/$(imageName):$(Build.BuildId)"
-              echo "Docker image pushed: $(DOCKER_USERNAME)/$(imageName):latest"
+              echo "Docker image pushed: $(dockerUsername)/$(imageName):$(Build.BuildId)"
+              echo "Docker image pushed: $(dockerUsername)/$(imageName):latest"
             displayName: 'Display Image Tags'
 
   # ========================================
@@ -222,7 +223,7 @@ stages:
                       $(Build.SourcesDirectory)/k8s/deployment.yaml
                       $(Build.SourcesDirectory)/k8s/service.yaml
                     containers: |
-                      $(DOCKER_USERNAME)/$(imageName):$(Build.BuildId)
+                      $(dockerUsername)/$(imageName):$(Build.BuildId)
                 
                 - task: KubernetesManifest@0
                   displayName: 'Deploy Ingress'
@@ -262,8 +263,8 @@ stages:
                 
                 - script: |
                     echo "Deployment completed successfully!"
-                    echo "Application URL: https://alpaca-simple-newly.ngrok-free.app/crud_veiculos"
-                    echo "API Docs: https://alpaca-simple-newly.ngrok-free.app/crud_veiculos/api-docs"
+                    echo "Application URL: https://alpaca-simple-newly.ngrok-free.app/apiveiculos"
+                    echo "API Docs: https://alpaca-simple-newly.ngrok-free.app/apiveiculos/api-docs"
                   displayName: 'Deployment Summary'
 
   # ========================================
@@ -288,7 +289,7 @@ stages:
           - script: |
               # Health Check
               echo "Testing health endpoint..."
-              response=$(curl -s -o /dev/null -w "%{http_code}" https://alpaca-simple-newly.ngrok-free.app/crud_veiculos/health)
+              response=$(curl -s -o /dev/null -w "%{http_code}" https://alpaca-simple-newly.ngrok-free.app/apiveiculos/health)
               
               if [ $response -eq 200 ]; then
                 echo "✓ Health check passed"
@@ -301,7 +302,7 @@ stages:
           - script: |
               # API Test - List Vehicles
               echo "Testing API endpoint..."
-              response=$(curl -s -o /dev/null -w "%{http_code}" https://alpaca-simple-newly.ngrok-free.app/crud_veiculos/api/veiculos)
+              response=$(curl -s -o /dev/null -w "%{http_code}" https://alpaca-simple-newly.ngrok-free.app/apiveiculos/api/veiculos)
               
               if [ $response -eq 200 ]; then
                 echo "✓ API endpoint accessible"
@@ -314,7 +315,7 @@ stages:
           - script: |
               # Swagger UI Test
               echo "Testing Swagger UI..."
-              response=$(curl -s -o /dev/null -w "%{http_code}" https://alpaca-simple-newly.ngrok-free.app/crud_veiculos/api-docs)
+              response=$(curl -s -o /dev/null -w "%{http_code}" https://alpaca-simple-newly.ngrok-free.app/apiveiculos/api-docs)
               
               if [ $response -eq 200 ]; then
                 echo "✓ Swagger UI accessible"
@@ -329,6 +330,6 @@ stages:
               echo "🎉 All smoke tests passed!"
               echo "================================================"
               echo "Application is healthy and running"
-              echo "URL: https://alpaca-simple-newly.ngrok-free.app/crud_veiculos"
+              echo "URL: https://alpaca-simple-newly.ngrok-free.app/apiveiculos"
               echo "================================================"
             displayName: 'Smoke Tests Summary'
