@@ -24,11 +24,11 @@ pr:
 variables:
   # Variáveis públicas
   - name: imageName
-    value: 'BES_DEVOPS_K8S'
+    value: 'bes_devops_k8s'
   - name: dockerRegistry
     value: 'docker.io'
   - name: dockerUsername
-    value: 'manoelvdsneto'
+    value: 'manoelvsneto'
   - name: kubernetesNamespace
     value: 'crud-veiculos'
   - name: imagePullSecret
