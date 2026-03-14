@@ -1,23 +1,25 @@
 import { VeiculoRepository } from '../../../src/infrastructure/repositories/VeiculoRepository';
 import { criarVeiculoDtoMock } from '../../fixtures/veiculos.fixture';
+import { DatabaseConnection } from '../../../src/infrastructure/database/DatabaseConnection';
 
 // Mock do DatabaseConnection para testes sem banco real
-jest.mock('../../../src/infrastructure/database/DatabaseConnection', () => ({
-  DatabaseConnection: {
-    getConnection: jest.fn().mockResolvedValue({
-      run: jest.fn().mockResolvedValue({ changes: 1 }),
-      get: jest.fn().mockResolvedValue(null),
-      all: jest.fn().mockResolvedValue([])
-    })
-  }
-}));
+jest.mock('../../../src/infrastructure/database/DatabaseConnection');
 
 describe('VeiculoRepository', () => {
   let repository: VeiculoRepository;
+  let mockDb: any;
 
   beforeEach(() => {
-    repository = new VeiculoRepository();
     jest.clearAllMocks();
+    
+    mockDb = {
+      run: jest.fn().mockResolvedValue({ changes: 1 }),
+      get: jest.fn().mockResolvedValue(null),
+      all: jest.fn().mockResolvedValue([])
+    };
+    
+    (DatabaseConnection.getConnection as jest.Mock) = jest.fn().mockResolvedValue(mockDb);
+    repository = new VeiculoRepository();
   });
 
   describe('criar', () => {
@@ -52,6 +54,7 @@ describe('VeiculoRepository', () => {
 
   describe('buscarPorId', () => {
     it('deve retornar null quando veículo não existir', async () => {
+      mockDb.get.mockResolvedValue(null);
       const resultado = await repository.buscarPorId('id-inexistente');
       expect(resultado).toBeNull();
     });
@@ -59,6 +62,7 @@ describe('VeiculoRepository', () => {
 
   describe('listarTodos', () => {
     it('deve retornar array vazio quando não houver veículos', async () => {
+      mockDb.all.mockResolvedValue([]);
       const resultado = await repository.listarTodos();
       expect(resultado).toEqual([]);
       expect(Array.isArray(resultado)).toBe(true);
@@ -67,6 +71,7 @@ describe('VeiculoRepository', () => {
 
   describe('atualizar', () => {
     it('deve retornar null quando veículo não existir', async () => {
+      mockDb.get.mockResolvedValue(null);
       const resultado = await repository.atualizar('id-inexistente', { cor: 'Azul' });
       expect(resultado).toBeNull();
     });
@@ -74,6 +79,7 @@ describe('VeiculoRepository', () => {
 
   describe('deletar', () => {
     it('deve retornar false quando veículo não existir', async () => {
+      mockDb.run.mockResolvedValue({ changes: 0 });
       const resultado = await repository.deletar('id-inexistente');
       expect(resultado).toBe(false);
     });
