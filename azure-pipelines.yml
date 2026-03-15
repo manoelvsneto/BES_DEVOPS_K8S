@@ -173,6 +173,19 @@ stages:
                 # imagePullSecret criado manualmente no cluster via kubectl
                 # Não criar via pipeline - gerenciado manualmente
                 
+                - script: |
+                    echo "========================================"
+                    echo "DEBUG: Verificando conectividade Kubernetes"
+                    echo "========================================"
+                    kubectl version --client
+                    kubectl cluster-info
+                    kubectl get nodes -o wide
+                    kubectl get namespaces
+                    kubectl get all -n crud-veiculos
+                    echo "========================================"
+                  displayName: 'Debug - Verificar conectividade Kubernetes'
+                  continueOnError: true
+                
                 - task: KubernetesManifest@0
                   displayName: 'Deploy to Kubernetes cluster'
                   inputs:
@@ -189,6 +202,9 @@ stages:
                     imagePullSecrets: |
                       $(imagePullSecret)
                     containers: '$(dockerUsername)/$(imageName):$(Build.BuildId)'
+                  env:
+                    KUBECTL_VERBOSE: '6'
+                    SYSTEM_DEBUG: 'true'
                 
                 
                 - script: |
