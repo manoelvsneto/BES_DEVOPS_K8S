@@ -198,13 +198,35 @@ stages:
                       $(Build.SourcesDirectory)/k8s/deployment.yaml
                       $(Build.SourcesDirectory)/k8s/service.yaml
                       $(Build.SourcesDirectory)/k8s/ingress.yaml
-                      $(Build.SourcesDirectory)/k8s/hpa.yaml
                     imagePullSecrets: |
                       $(imagePullSecret)
                     containers: '$(dockerUsername)/$(imageName):$(Build.BuildId)'
                   env:
                     KUBECTL_VERBOSE: '6'
                     SYSTEM_DEBUG: 'true'
+                  continueOnError: true
+                
+                - script: |
+                    echo "========================================"
+                    echo "DEBUG: Status após deploy"
+                    echo "========================================"
+                    echo "Deployments:"
+                    kubectl get deployments -n default -o wide
+                    echo ""
+                    echo "Pods:"
+                    kubectl get pods -n default -o wide
+                    echo ""
+                    echo "Events:"
+                    kubectl get events -n default --sort-by='.lastTimestamp' | tail -20
+                    echo ""
+                    echo "Describe deployment:"
+                    kubectl describe deployment crud-veiculos -n default
+                    echo ""
+                    echo "Logs dos pods (se existirem):"
+                    kubectl logs -l app=crud-veiculos -n default --tail=50 --all-containers=true || echo "Nenhum pod em execução"
+                    echo "========================================"
+                  displayName: 'Debug - Status pós-deploy'
+                  continueOnError: true
                 
                 
                 - script: |
