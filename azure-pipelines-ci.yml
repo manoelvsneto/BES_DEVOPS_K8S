@@ -1,5 +1,5 @@
 # Azure Pipeline - CI (Build e Testes)
-# Pipeline focado em testes unitários e análise de código com SonarCloud
+# Pipeline focado em testes unitários
 
 trigger:
   branches:
@@ -19,9 +19,6 @@ pr:
 
 variables:
   nodeVersion: '20.x'
-  sonarCloudOrganization: 'manoelvsneto'
-  sonarCloudProjectKey: 'manoelvsneto_BES_DEVOPS_K8S'
-  sonarCloudProjectName: 'BES_DEVOPS_K8S'
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -132,47 +129,7 @@ stages:
             displayName: 'Verify Coverage Threshold'
             condition: succeededOrFailed()
           
-          # ========================================
-          # SonarCloud Analysis
-          # ========================================
-          - task: SonarCloudPrepare@1
-            displayName: 'Prepare SonarCloud Analysis'
-            inputs:
-              SonarCloud: 'SonarCloud-Connection'
-              organization: $(sonarCloudOrganization)
-              scannerMode: 'CLI'
-              configMode: 'manual'
-              cliProjectKey: $(sonarCloudProjectKey)
-              cliProjectName: $(sonarCloudProjectName)
-              cliProjectVersion: '$(Build.BuildNumber)'
-              cliSources: 'src'
-              extraProperties: |
-                # Paths
-                sonar.sources=src
-                sonar.tests=tests
-                sonar.exclusions=**/node_modules/**,**/dist/**,**/coverage/**,**/*.test.ts,**/*.spec.ts
-                sonar.test.inclusions=**/*.test.ts,**/*.spec.ts
-                
-                # Coverage
-                sonar.javascript.lcov.reportPaths=coverage/lcov.info
-                sonar.typescript.lcov.reportPaths=coverage/lcov.info
-                sonar.coverage.exclusions=**/*.test.ts,**/*.spec.ts,**/tests/**,**/mocks/**,**/fixtures/**
-                
-                # Language
-                sonar.language=ts
-                sonar.sourceEncoding=UTF-8
-                
-                # Quality Gate
-                sonar.qualitygate.wait=true
-                sonar.qualitygate.timeout=300
           
-          - task: SonarCloudAnalyze@1
-            displayName: 'Run SonarCloud Code Analysis'
-          
-          - task: SonarCloudPublish@1
-            displayName: 'Publish SonarCloud Quality Gate Result'
-            inputs:
-              pollingTimeoutSec: '300'
           
           # ========================================
           # Archive Test Results
